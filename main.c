@@ -12,9 +12,8 @@ interrupt void cpu_timer0_isr(void);
 Uint8 canSend(CAN_PORT notused,Message *m);
 Uint8 canSendSet(UNS8 port,Message *m);
 void canRevInit(void);
-//void CANMessSet(UNS8 MBOX_PORT);
 
-void InitLEDGPIO(void);   //¶¨Ê±Æ÷×´Ì¬Ö¸Ê¾µÆ
+void InitLEDGPIO(void);   //å®šæ—¶å™¨çŠ¶æ€æŒ‡ç¤ºç¯
 void LEDOverTurn(void);
 void delay_s(int i);
 void setTimer(TIMEVAL value);
@@ -40,16 +39,13 @@ extern TIMEVAL Last_Begin_Time;
 void main(void)
 {
 
-	Message m;
-	Uint16  i;
+   Message m;
+   Uint16  i;
 
    InitSysCtrl();
 
    InitECanGpio();
    InitLEDGPIO();
-
-// Step 3. Clear all interrupts and initialize PIE vector table:
-// Disable CPU interrupts
    DINT;
 
 // Disable CPU interrupts and clear all CPU interrupt flags:
@@ -57,42 +53,33 @@ void main(void)
    IFR = 0x0000;
 
    InitPieVectTable();
+   
+   EALLOW;
+   PieVectTable.ECAN0INTA = &eCAN0_inta;
+   PieVectTable.TINT0 = &cpu_timer0_isr;
+   EDIS;
+  
+   InitECana(); // Initialize eCAN-A module
+   ECanaRegs.CANMD.all = 0xFFFF0000;
+   ECanaRegs.CANME.all = 0x00000000;
 
-     EALLOW;
-     PieVectTable.ECAN0INTA = &eCAN0_inta;
-     PieVectTable.TINT0 = &cpu_timer0_isr;
-     EDIS;
-
-
-    InitECana(); // Initialize eCAN-A module
-
-    ECanaRegs.CANMD.all = 0xFFFF0000;
-    ECanaRegs.CANME.all = 0x00000000;
-
-
-    /*¶¨Ê±***********************/
+/*å®šæ—¶***********************/
     InitCpuTimers();
-    ConfigCpuTimer(&CpuTimer0, 80, 2000);
-    //ConfigCpuTimer(&CpuTimer0, 80 , 62500);
+    ConfigCpuTimer(&CpuTimer0, 80, 2000);   //å®šæ—¶2ms
     CpuTimer0Regs.TCR.all = 0x4001; // Use write-only instruction to set TSS bit = 0
+    //EINT;   //å¼€å…¨å±€ä¸­æ–­
+    //ERTM;	//å¼€å®æ—¶ä¸­æ–­
+/*å®šæ—¶***********************/
 
-    //PieCtrlRegs.PIECTRL.bit.ENPIE = 1;          // Enable the PIE block   ±¾À´×¢ÊÍÁË£¬0604È¡Ïû×¢ÊÍ
-
-    //EINT;   //¿ªÈ«¾ÖÖĞ¶Ï
-    //ERTM;	//¿ªÊµÊ±ÖĞ¶Ï
-    /*¶¨Ê±***********************/
-
-	canRevInit();  //½ÓÊÕ³õÊ¼»¯
-
-	delay_s(1000);
+    canRevInit();  //æ¥æ”¶åˆå§‹åŒ–
+    delay_s(1000);
 
 
 	  setState(&ObjDict_Data, Initialisation);	// Init the state
 	  setNodeId (&ObjDict_Data, 0x7F);
 	  setState(&ObjDict_Data, Operational);		// Put the master in operational mode
 
-	  /******ÅäÖÃ´Ó»ú*************/
-
+  /******é…ç½®ä»æœº*************/
 
 	  delay_s(10);
 	  masterSendNMTstateChange (&ObjDict_Data, 0x00, NMT_Reset_Comunication);
@@ -108,32 +95,21 @@ void main(void)
 	  PDO_Onoff_Config(NodeId, 0 , 4);
 	  delay_s(100);
 
-
 	  delay_s(1000);
-      //Mapping RPDO1/RPDO2
-	  //set huining mode
+	  //set mode
 	  SDO_Mode_of_Operation(NodeId, 0x08);
-
-
-	  //SDO_Velmode_Config(NodeId, 50000);
-
 	  //change state
 
 	  delay_s(100);
 	  masterSendNMTstateChange (&ObjDict_Data, 0x01, NMT_Start_Node);
 
-	  /******ÅäÖÃ´Ó»ú*************/
+  /******é…ç½®ä»æœº*************/
 
 	  delay_s(1000);
-	  //set PP mode statemachine
 	  SDO_PPmode_Config_statemachine(NodeId);
-		//masterSendNMTstateChange (&ObjDict_Data, 0x00, NMT_Start_Node);
-
-//		delay_s(1000);
-//		sendPDOevent (&ObjDict_Data);
-
-	    IER |= M_INT1;
-	    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+        
+            IER |= M_INT1;
+	    PieCtrlRegs.PIEIER1.bit.INTx7 = 1; //å¼€å®šæ—¶å™¨ä¸­æ–­
 
 		while(1)
 		{
@@ -152,16 +128,13 @@ void main(void)
 
 Uint8 canSend(CAN_PORT notused,Message *m)
 {
-   //hotpan 0521
 	return canSendSet(0 , m);
 }
 
 Uint8 canSendSet(UNS8 port,Message *m)
 {
-   //hotpan 0521
 	struct MBOX *pMB;
-
-    ECanaRegs.CANME.all = 0x00000000;
+	ECanaRegs.CANME.all = 0x00000000;
 	pMB = &(ECanaMboxes.MBOX0)+port*8;
 
 	(*pMB).MSGID.bit.IDE = 0;
@@ -172,11 +145,6 @@ Uint8 canSendSet(UNS8 port,Message *m)
 	(*pMB).MSGID.bit.EXTMSGID_H = 0;
 
 	(*pMB).MSGCTRL.bit.DLC = 8;
-
-	/*
-	(*pMB).MDL.all = 0x9555AAA0;
-	(*pMB).MDH.all = 0x89ABCDEF;
-    */
 
 	(*pMB).MSGCTRL.bit.DLC    = m->len;
 	(*pMB).MDH.byte.BYTE7     = m->data[7];
@@ -217,7 +185,7 @@ void delay_s(int i)
 
 void canRevInit(void)
 {
-    /*½ÓÊÕ************************/
+    /*æ¥æ”¶************************/
 	 ECanaRegs.CANME.all = 0x00000000;
 	 ECanaMboxes.MBOX16.MSGID.all = 0x40000000;
 	 ECanaMboxes.MBOX16.MSGID.bit.STDMSGID = 0x000;    //NMT
@@ -255,24 +223,24 @@ void canRevInit(void)
          ECanaRegs.CANMIM.all = 0xFFFFFFFF;
 
          ECanaRegs.CANGAM.all   = 0xFFFFFFFF;
-         ECanaLAMRegs.LAM16.all = 0x00000000;                        //±¾µØÆÁ±Î
-         ECanaLAMRegs.LAM17.all = 0x00000000;                        //±¾µØÆÁ±Î
-         ECanaLAMRegs.LAM18.all = 0x00000000;                        //±¾µØÆÁ±Î
-         ECanaLAMRegs.LAM19.all = 0x00000000;                        //±¾µØÆÁ±Î
+         ECanaLAMRegs.LAM16.all = 0x00000000;                        //æœ¬åœ°å±è”½
+         ECanaLAMRegs.LAM17.all = 0x00000000;                        //æœ¬åœ°å±è”½
+         ECanaLAMRegs.LAM18.all = 0x00000000;                        //æœ¬åœ°å±è”½
+         ECanaLAMRegs.LAM19.all = 0x00000000;                        //æœ¬åœ°å±è”½
 
-         ECanaRegs.CANMIL.all = 0; //ÓÊÏäÖĞ¶Ï½«²úÉúÔÚECAN0INT
+         ECanaRegs.CANMIL.all = 0; //é‚®ç®±ä¸­æ–­å°†äº§ç”Ÿåœ¨ECAN0INT
          ECanaRegs.CANGIF0.all = 0xFFFFFFFF;
-         ECanaRegs.CANGIM.bit.I0EN = 1; //ECAN0INTÖĞ¶ÏÇëÇóÏß±»Ê¹ÄÜ
+         ECanaRegs.CANGIM.bit.I0EN = 1; //ECAN0INTä¸­æ–­è¯·æ±‚çº¿è¢«ä½¿èƒ½
          EDIS;
 
          delay_s(50);
 
          PieCtrlRegs.PIECTRL.bit.ENPIE = 1;          // Enable the PIE block
-         PieCtrlRegs.PIEIER9.bit.INTx5 = 1; //Ê¹ÄÜPIEÖĞ¶Ï
-         IER |= M_INT9; //Ê¹ÄÜCPUÖĞ¶Ï
-         EINT;   //¿ªÈ«¾ÖÖĞ¶Ï
-         ERTM;	//¿ªÊµÊ±ÖĞ¶Ï
-    /*½ÓÊÕ************************/
+         PieCtrlRegs.PIEIER9.bit.INTx5 = 1; //ä½¿èƒ½PIEä¸­æ–­
+         IER |= M_INT9; //ä½¿èƒ½CPUä¸­æ–­
+         EINT;   //å¼€å…¨å±€ä¸­æ–­
+         ERTM;	//å¼€å®æ—¶ä¸­æ–­
+    /*æ¥æ”¶************************/
 }
 
 interrupt void eCAN0_inta(void)
@@ -293,7 +261,7 @@ interrupt void eCAN0_inta(void)
 	DINT;
 	while((IntNum != 0x00000000)&&(IntNum != 0x00010000)&&(IntNum != 0x00020000)&&(IntNum != 0x00040000)&&(IntNum != 0x00080000));
 
-    //¶ÁÈ¡ÖĞ¶ÏÔ­Òò
+    //è¯»å–ä¸­æ–­åŸå› 
 	if(ECanaRegs.CANRMP.bit.RMP16 ==1) ulStatus = 7;
 	if(ECanaRegs.CANRMP.bit.RMP17 ==1) ulStatus = 8;
 	if(ECanaRegs.CANRMP.bit.RMP18 ==1) ulStatus = 9;
@@ -361,7 +329,7 @@ interrupt void eCAN0_inta(void)
 
 	    }
 
-	ECanaRegs.CANRMP.all = 0x000F0000; //¸´Î»RMP±êÖ¾£¬Í¬Ê±Ò²¸´Î»ÖĞ¶Ï±êÖ¾
+	ECanaRegs.CANRMP.all = 0x000F0000; //å¤ä½RMPæ ‡å¿—ï¼ŒåŒæ—¶ä¹Ÿå¤ä½ä¸­æ–­æ ‡å¿—
 
 	PieCtrlRegs.PIEACK.bit.ACK9 = 1;
     EINT;
@@ -397,9 +365,7 @@ interrupt void cpu_timer0_isr(void)
    // Acknowledge this interrupt to receive more interrupts from group 1
    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
    //LEDOverTurn();
-
   //TimeDispatch();
-
    SYNC_send();
 
    EINT;
@@ -407,23 +373,15 @@ interrupt void cpu_timer0_isr(void)
 
 void setTimer(TIMEVAL value)
 {
-	//TimerLoadSet(TIMER0_BASE, TIMER_A, value);  //Ó²¼şÏà¹Ø£¬ĞèÖØĞ´
     ConfigCpuTimer(&CpuTimer0, 80 , value);
-	   CpuTimer0Regs.TCR.all = 0x4001;
+    CpuTimer0Regs.TCR.all = 0x4001;
 }
 
 
 TIMEVAL getElapsedTime(void)
 {
-
-	/********************Ó²¼şÏà¹Ø£¬ĞèÖØĞ´*******************
-	TIMEVAL current = TimerValueGet(TIMER0_BASE, TIMER_A);
-	//return (current - Last_Begin_Time);
-	return (Last_Begin_Time - current); //ÒòÎªÊÇÏòÏÂ¼ÆÊıµÄ
-	 *******************Ó²¼şÏà¹Ø£¬ĞèÖØĞ´********************/
-
 	TIMEVAL current = (CpuTimer0Regs.TIM.all)/80;
 	//TIMEVAL current = (CpuTimer0Regs.TIM.all)/1280;
-	return (Last_Begin_Time - current); //ÒòÎªÊÇÏòÏÂ¼ÆÊıµÄ
+	return (Last_Begin_Time - current); //å› ä¸ºæ˜¯å‘ä¸‹è®¡æ•°çš„
 
 }
